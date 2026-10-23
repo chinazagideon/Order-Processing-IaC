@@ -61,6 +61,7 @@ Resources:
   CreateOrderLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       LogGroupName: !Sub /aws/lambda/${CreateOrder}
   OrdersTable:
@@ -104,6 +105,7 @@ Resources:
   UpdateInventoryLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       LogGroupName: !Sub /aws/lambda/${UpdateInventory}
   OrderNotifications:
@@ -116,6 +118,9 @@ Resources:
       Description: !Sub
         - Stack ${AWS::StackName} Function ${ResourceName}
         - ResourceName: ProcessPayment
+      CodeUri: src/ProcessPayment
+      Handler: index.handler
+      Runtime: nodejs22.x
       MemorySize: 128
       Timeout: 30
       Tracing: Active
@@ -126,22 +131,28 @@ Resources:
           ORDERNOTIFICATIONS_QUEUE_URL: !Ref OrderNotifications
           UPDATEINVENTORY_FUNCTION_NAME: !Ref UpdateInventory
           UPDATEINVENTORY_FUNCTION_ARN: !GetAtt UpdateInventory.Arn
+          PAYMENT_SECRET_ARN: !Ref PaymentSecretArn
       Policies:
         - SQSSendMessagePolicy:
             QueueName: !GetAtt OrderNotifications.QueueName
         - LambdaInvokePolicy:
             FunctionName: !Ref UpdateInventory
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref PaymentSecretArn
       Events:
         OrderQueue:
           Type: SQS
           Properties:
             Queue: !GetAtt OrderQueue.Arn
             BatchSize: 1
-
   ProcessPaymentLogGroup:
     Type: AWS::Logs::LogGroup
-    DeletionPolicy: Delete
+    DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       RetentionInDays: 14
       LogGroupName: !Sub /aws/lambda/${ProcessPayment}
+Outputs:
+  OrderApiUrl:
+    Description: Invoke URL for the Order API Prod stage
+    Value: !Sub https://${OderApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/orders
