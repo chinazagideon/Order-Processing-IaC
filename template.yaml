@@ -1,4 +1,9 @@
 Transform: AWS::Serverless-2016-10-31
+Parameters:
+  PaymentSecretArn:
+    Type: String
+    Description: ARN of the payment gateway secret in AWS Secrets Manager
+    Default: arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/order-service/payment-gateway
 Resources:
   OderApi:
     Type: AWS::Serverless::Api
@@ -31,7 +36,7 @@ Resources:
       CodeUri: src/CreateOrder
       Handler: index.handler
       Runtime: nodejs22.x
-      MemorySize: 3008
+      MemorySize: 128
       Timeout: 30
       Tracing: Active
       Environment:
@@ -56,6 +61,7 @@ Resources:
   CreateOrderLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       LogGroupName: !Sub /aws/lambda/${CreateOrder}
   OrdersTable:
@@ -92,13 +98,14 @@ Resources:
       CodeUri: src/UpdateInventory
       Handler: index.handler
       Runtime: nodejs22.x
-      MemorySize: 3008
+      MemorySize: 128
       Timeout: 30
       Tracing: Active
       Environment: {}
   UpdateInventoryLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       LogGroupName: !Sub /aws/lambda/${UpdateInventory}
   OrderNotifications:
@@ -114,7 +121,7 @@ Resources:
       CodeUri: src/ProcessPayment
       Handler: index.handler
       Runtime: nodejs22.x
-      MemorySize: 3008
+      MemorySize: 128
       Timeout: 30
       Tracing: Active
       Environment:
@@ -124,11 +131,14 @@ Resources:
           ORDERNOTIFICATIONS_QUEUE_URL: !Ref OrderNotifications
           UPDATEINVENTORY_FUNCTION_NAME: !Ref UpdateInventory
           UPDATEINVENTORY_FUNCTION_ARN: !GetAtt UpdateInventory.Arn
+          PAYMENT_SECRET_ARN: !Ref PaymentSecretArn
       Policies:
         - SQSSendMessagePolicy:
             QueueName: !GetAtt OrderNotifications.QueueName
         - LambdaInvokePolicy:
             FunctionName: !Ref UpdateInventory
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref PaymentSecretArn
       Events:
         OrderQueue:
           Type: SQS
@@ -138,5 +148,11 @@ Resources:
   ProcessPaymentLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
+      RetentionInDays: 14
       LogGroupName: !Sub /aws/lambda/${ProcessPayment}
+Outputs:
+  OrderApiUrl:
+    Description: Invoke URL for the Order API Prod stage
+    Value: !Sub https://${OderApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/orders
